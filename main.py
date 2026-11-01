@@ -1,9 +1,8 @@
 import time
-import math
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="CompareQ Multi-Category Backend API", version="2.2.0")
+app = FastAPI(title="CompareQ Multi-Category Backend API", version="2.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,9 +11,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-CACHE = {}
-CACHE_TTL = 900
 
 # 1. GROCERY
 GROCERY_CATALOG = {
@@ -54,18 +50,6 @@ GROCERY_CATALOG = {
             "amazonfresh": {"price": 250, "delivery": 0, "handling": 0, "surge": 0, "eta": "90 mins"}
         }
     },
-    "paneer": {
-        "name": "Amul Fresh Malai Paneer (200g)", "unit": "200g pack",
-        "stores": {
-            "blinkit": {"price": 88, "delivery": 15, "handling": 4, "surge": 0, "eta": "10 mins"},
-            "zepto": {"price": 90, "delivery": 20, "handling": 4, "surge": 0, "eta": "11 mins"},
-            "instamart": {"price": 92, "delivery": 25, "handling": 4, "surge": 0, "eta": "13 mins"},
-            "flipkart_minutes": {"price": 86, "delivery": 18, "handling": 2, "surge": 0, "eta": "14 mins"},
-            "bbnow": {"price": 88, "delivery": 15, "handling": 3, "surge": 0, "eta": "17 mins"},
-            "jiomart": {"price": 85, "delivery": 0, "handling": 0, "surge": 0, "eta": "30 mins"},
-            "amazonfresh": {"price": 87, "delivery": 29, "handling": 0, "surge": 0, "eta": "60 mins"}
-        }
-    },
     "eggs": {
         "name": "Farm Fresh White Eggs (Pack of 6)", "unit": "6 pcs",
         "stores": {
@@ -85,33 +69,23 @@ MEAT_CATALOG = {
     "chicken": {
         "name": "Fresh Tender Chicken Curry Cut / Breast (500g)", "unit": "500g pack",
         "stores": {
+            "freshtohome": {"price": 169, "delivery": 29, "handling": 0, "surge": 0, "eta": "40 mins"},
             "licious": {"price": 179, "delivery": 39, "handling": 0, "surge": 0, "eta": "30 mins"},
             "meatigo": {"price": 185, "delivery": 35, "handling": 0, "surge": 0, "eta": "45 mins"},
-            "freshtohome": {"price": 169, "delivery": 29, "handling": 0, "surge": 0, "eta": "40 mins"},
             "blinkit": {"price": 195, "delivery": 15, "handling": 4, "surge": 0, "eta": "11 mins"},
             "zepto": {"price": 199, "delivery": 25, "handling": 4, "surge": 0, "eta": "10 mins"},
-            "instamart": {"price": 190, "delivery": 20, "handling": 4, "surge": 0, "eta": "14 mins"},
-            "bbnow": {"price": 185, "delivery": 15, "handling": 3, "surge": 0, "eta": "18 mins"}
+            "instamart": {"price": 190, "delivery": 20, "handling": 4, "surge": 0, "eta": "14 mins"}
         }
     },
     "mutton": {
         "name": "Rich Goat Mutton Curry Cut (500g)", "unit": "500g pack",
         "stores": {
+            "freshtohome": {"price": 519, "delivery": 29, "handling": 0, "surge": 0, "eta": "40 mins"},
             "licious": {"price": 529, "delivery": 39, "handling": 0, "surge": 0, "eta": "30 mins"},
             "meatigo": {"price": 545, "delivery": 35, "handling": 0, "surge": 0, "eta": "45 mins"},
-            "freshtohome": {"price": 519, "delivery": 29, "handling": 0, "surge": 0, "eta": "40 mins"},
             "blinkit": {"price": 560, "delivery": 15, "handling": 4, "surge": 0, "eta": "11 mins"},
             "zepto": {"price": 565, "delivery": 25, "handling": 4, "surge": 0, "eta": "10 mins"},
             "instamart": {"price": 550, "delivery": 20, "handling": 4, "surge": 0, "eta": "14 mins"}
-        }
-    },
-    "fish": {
-        "name": "Fresh Seer Fish / Rohu Steaks (500g)", "unit": "500g cleaned",
-        "stores": {
-            "licious": {"price": 389, "delivery": 39, "handling": 0, "surge": 0, "eta": "35 mins"},
-            "freshtohome": {"price": 369, "delivery": 29, "handling": 0, "surge": 0, "eta": "40 mins"},
-            "meatigo": {"price": 399, "delivery": 35, "handling": 0, "surge": 0, "eta": "45 mins"},
-            "blinkit": {"price": 410, "delivery": 15, "handling": 4, "surge": 0, "eta": "12 mins"}
         }
     }
 }
@@ -127,16 +101,6 @@ FOOD_CATALOG = {
             "eatclub": {"price": 239, "delivery": 0, "handling": 0, "surge": 0, "eta": "25 mins"},
             "ondc": {"price": 250, "delivery": 20, "handling": 8, "surge": 0, "eta": "35 mins"}
         }
-    },
-    "pizza": {
-        "name": "Pepper Barbecue Chicken Pizza (Medium)", "unit": "Medium 8-inch",
-        "stores": {
-            "swiggy": {"price": 399, "delivery": 35, "handling": 25, "surge": 0, "eta": "32 mins"},
-            "zomato": {"price": 399, "delivery": 40, "handling": 28, "surge": 0, "eta": "30 mins"},
-            "magicpin": {"price": 349, "delivery": 25, "handling": 12, "surge": 0, "eta": "36 mins"},
-            "eatclub": {"price": 319, "delivery": 0, "handling": 0, "surge": 0, "eta": "26 mins"},
-            "ondc": {"price": 355, "delivery": 22, "handling": 10, "surge": 0, "eta": "35 mins"}
-        }
     }
 }
 
@@ -145,20 +109,20 @@ PHARMACY_CATALOG = {
     "dolo": {
         "name": "Dolo 650mg Tablet (Strip of 15)", "unit": "15 tablets",
         "stores": {
+            "truemeds": {"price": 18, "delivery": 25, "handling": 0, "surge": 0, "eta": "3 hrs"},
+            "medplus": {"price": 27, "delivery": 20, "handling": 0, "surge": 0, "eta": "45 mins"},
+            "pharmeasy": {"price": 28, "delivery": 35, "handling": 5, "surge": 0, "eta": "60 mins"},
             "1mg": {"price": 29, "delivery": 29, "handling": 5, "surge": 0, "eta": "45 mins"},
             "apollo": {"price": 30, "delivery": 25, "handling": 4, "surge": 0, "eta": "30 mins"},
-            "pharmeasy": {"price": 28, "delivery": 35, "handling": 5, "surge": 0, "eta": "60 mins"},
-            "netmeds": {"price": 29, "delivery": 30, "handling": 0, "surge": 0, "eta": "2 hrs"},
-            "truemeds": {"price": 18, "delivery": 25, "handling": 0, "surge": 0, "eta": "3 hrs"},
-            "medplus": {"price": 27, "delivery": 20, "handling": 0, "surge": 0, "eta": "45 mins"}
+            "netmeds": {"price": 29, "delivery": 30, "handling": 0, "surge": 0, "eta": "2 hrs"}
         }
     }
 }
 
-# 5. ELECTRONICS & APPLIANCES
+# 5. ELECTRONICS & TECH
 ELECTRONICS_CATALOG = {
     "tv": {
-        "name": "Sony Bravia 55-inch 4K Ultra HD Smart Google TV", "unit": "1 Unit",
+        "name": "Sony Bravia 55-inch 4K Google TV", "unit": "1 Unit",
         "stores": {
             "pai": {"price": 56990, "delivery": 0, "handling": 0, "surge": 0, "eta": "Same Day Pickup"},
             "vijaysales": {"price": 57490, "delivery": 0, "handling": 0, "surge": 0, "eta": "2 Days"},
@@ -171,19 +135,42 @@ ELECTRONICS_CATALOG = {
     "airpods": {
         "name": "Apple AirPods Pro (2nd Gen, Type-C)", "unit": "1 Unit",
         "stores": {
-            "pai": {"price": 19290, "delivery": 0, "handling": 0, "surge": 0, "eta": "Same Day Store Pickup"},
+            "pai": {"price": 19290, "delivery": 0, "handling": 0, "surge": 0, "eta": "Store Pickup"},
             "vijaysales": {"price": 19490, "delivery": 0, "handling": 0, "surge": 0, "eta": "2 Days"},
             "flipkart": {"price": 19499, "delivery": 0, "handling": 49, "surge": 0, "eta": "Tomorrow"},
             "amazon": {"price": 19990, "delivery": 0, "handling": 0, "surge": 0, "eta": "Tomorrow"},
-            "reliancedigital": {"price": 19999, "delivery": 0, "handling": 0, "surge": 0, "eta": "2 Days"},
-            "croma": {"price": 20490, "delivery": 0, "handling": 0, "surge": 0, "eta": "Same Day"}
+            "croma": {"price": 20490, "delivery": 0, "handling": 0, "surge": 0, "eta": "Same Day"},
+            "reliancedigital": {"price": 19999, "delivery": 0, "handling": 0, "surge": 0, "eta": "2 Days"}
+        }
+    }
+}
+
+# 6. FASHION & SHOPPING (Myntra, Ajio, Amazon, Flipkart, Nykaa)
+SHOPPING_CATALOG = {
+    "shoes": {
+        "name": "Men's Breathable Mesh Running Shoes", "unit": "1 Pair",
+        "stores": {
+            "myntra": {"price": 1299, "delivery": 0, "handling": 20, "surge": 0, "eta": "2 Days"},
+            "ajio": {"price": 1349, "delivery": 0, "handling": 29, "surge": 0, "eta": "3 Days"},
+            "amazon": {"price": 1399, "delivery": 0, "handling": 0, "surge": 0, "eta": "Tomorrow"},
+            "flipkart": {"price": 1380, "delivery": 0, "handling": 29, "surge": 0, "eta": "Tomorrow"},
+            "nykaa": {"price": 1499, "delivery": 0, "handling": 0, "surge": 0, "eta": "3 Days"}
+        }
+    },
+    "tshirt": {
+        "name": "Pure Cotton Regular Fit Casual T-Shirt", "unit": "1 Pc",
+        "stores": {
+            "ajio": {"price": 399, "delivery": 0, "handling": 29, "surge": 0, "eta": "3 Days"},
+            "myntra": {"price": 449, "delivery": 0, "handling": 20, "surge": 0, "eta": "2 Days"},
+            "flipkart": {"price": 420, "delivery": 0, "handling": 29, "surge": 0, "eta": "Tomorrow"},
+            "amazon": {"price": 450, "delivery": 0, "handling": 0, "surge": 0, "eta": "Tomorrow"},
+            "nykaa": {"price": 499, "delivery": 0, "handling": 0, "surge": 0, "eta": "3 Days"}
         }
     }
 }
 
 def format_results(catalog, q_clean, default_stores, base_price=75, unit_label="Standard Unit"):
     matches = []
-    # 1. Exact or partial keyword matching
     for k, v in catalog.items():
         name_lower = v["name"].lower()
         if k in q_clean or q_clean in k or any(word in name_lower for word in q_clean.split()):
@@ -197,7 +184,6 @@ def format_results(catalog, q_clean, default_stores, base_price=75, unit_label="
             prod["winner"] = {"store": best_s, "landed": low_p}
             matches.append(prod)
 
-    # 2. Dynamic item generator if query not in catalog
     if not matches and len(q_clean) >= 2:
         title = q_clean.title()
         prod = {"id": f"dyn_{int(time.time())}", "name": f"{title} ({unit_label})", "unit": unit_label, "stores": default_stores, "calculated": {}}
@@ -214,30 +200,24 @@ def format_results(catalog, q_clean, default_stores, base_price=75, unit_label="
 
 @app.get("/")
 def health():
-    return {"status": "ok", "app": "CompareQ Multi-Category API", "version": "2.2.0"}
+    return {"status": "ok", "app": "CompareQ API", "version": "2.3.0"}
 
 def compute_basket_summary(results):
     if not results or len(results) <= 1:
         return None
-
     total_items = len(results)
     store_totals = {}
-
     for item in results:
-        stores = item.get("stores", {})
-        for store_name, store_data in stores.items():
+        for store_name, store_data in item.get("stores", {}).items():
             if store_name not in store_totals:
                 store_totals[store_name] = {
-                    "items_total": 0,
-                    "items_found": 0,
+                    "items_total": 0, "items_found": 0,
                     "delivery": store_data.get("delivery", 0),
                     "handling": store_data.get("handling", 0),
                     "surge": store_data.get("surge", 0),
                     "max_eta": store_data.get("eta", "N/A"),
-                    "basket_total": 0,
-                    "all_items_available": False,
+                    "basket_total": 0, "all_items_available": False
                 }
-
             price = store_data.get("price")
             if price is not None and price > 0:
                 store_totals[store_name]["items_total"] += price
@@ -248,26 +228,18 @@ def compute_basket_summary(results):
 
     best_store = None
     lowest_cost = float("inf")
-
     for store_name, data in store_totals.items():
         data["all_items_available"] = (data["items_found"] == total_items)
         data["basket_total"] = data["items_total"] + data["delivery"] + data["handling"] + data["surge"]
-
         if data["all_items_available"] and data["basket_total"] < lowest_cost:
             lowest_cost = data["basket_total"]
             best_store = {
-                "store": store_name,
-                "total": data["basket_total"],
+                "store": store_name, "total": data["basket_total"],
                 "items_total": data["items_total"],
                 "fees_total": data["delivery"] + data["handling"] + data["surge"],
-                "eta": data["max_eta"],
+                "eta": data["max_eta"]
             }
-
-    return {
-        "total_items_queried": total_items,
-        "stores": store_totals,
-        "best_single_store": best_store
-    }
+    return {"total_items_queried": total_items, "stores": store_totals, "best_single_store": best_store}
 
 @app.get("/api/compare")
 async def compare_items(
@@ -279,21 +251,28 @@ async def compare_items(
     cat = category.strip().lower()
     q_lower = q.lower()
 
-    # Intelligent category overrides based on search text
-    if any(m in q_lower for m in ["chicken", "mutton", "fish", "meat", "prawn"]):
+    if any(m in q_lower for m in ["chicken", "mutton", "fish", "meat", "prawn", "beef"]):
         cat = "meat"
-    elif any(e in q_lower for e in ["tv", "sony", "airpods", "laptop", "croma", "refrigerator", "phone", "iphone"]):
+    elif any(e in q_lower for e in ["tv", "sony", "airpods", "laptop", "croma", "refrigerator", "phone", "iphone", "oven"]):
         cat = "electronics"
+    elif any(s in q_lower for s in ["shoe", "shoes", "shirt", "tshirt", "jeans", "dress", "kurti", "lipstick", "top", "sneaker", "perfume", "watch"]):
+        cat = "shopping"
 
-    query_tokens = [term.strip().lower() for term in q.split(",") if term.strip()]
-    if not query_tokens:
-        query_tokens = [q_lower]
-
+    query_tokens = [term.strip().lower() for term in q.split(",") if term.strip()] or [q_lower]
     all_matches = []
 
-    if cat == "electronics":
+    if cat == "shopping":
         def_s = {
-            "pai": {"price": 54990, "delivery": 0, "handling": 0, "surge": 0, "eta": "Same Day Store Pickup"},
+            "myntra": {"price": 1199, "delivery": 0, "handling": 20, "surge": 0, "eta": "2 Days"},
+            "ajio": {"price": 1149, "delivery": 0, "handling": 29, "surge": 0, "eta": "3 Days"},
+            "amazon": {"price": 1249, "delivery": 0, "handling": 0, "surge": 0, "eta": "Tomorrow"},
+            "flipkart": {"price": 1180, "delivery": 0, "handling": 29, "surge": 0, "eta": "Tomorrow"},
+            "nykaa": {"price": 1299, "delivery": 0, "handling": 0, "surge": 0, "eta": "3 Days"}
+        }
+        catalog, def_price, def_unit = SHOPPING_CATALOG, 1199, "Verified Lifestyle Unit"
+    elif cat == "electronics":
+        def_s = {
+            "pai": {"price": 54990, "delivery": 0, "handling": 0, "surge": 0, "eta": "Store Pickup"},
             "vijaysales": {"price": 55490, "delivery": 0, "handling": 0, "surge": 0, "eta": "2 Days"},
             "croma": {"price": 55990, "delivery": 0, "handling": 0, "surge": 0, "eta": "Same Day"},
             "flipkart": {"price": 56299, "delivery": 0, "handling": 99, "surge": 0, "eta": "Tomorrow"},
@@ -303,9 +282,9 @@ async def compare_items(
         catalog, def_price, def_unit = ELECTRONICS_CATALOG, 54990, "Verified Retail Unit"
     elif cat == "meat":
         def_s = {
+            "freshtohome": {"price": 169, "delivery": 29, "handling": 0, "surge": 0, "eta": "40 mins"},
             "licious": {"price": 179, "delivery": 39, "handling": 0, "surge": 0, "eta": "30 mins"},
             "meatigo": {"price": 185, "delivery": 35, "handling": 0, "surge": 0, "eta": "45 mins"},
-            "freshtohome": {"price": 169, "delivery": 29, "handling": 0, "surge": 0, "eta": "40 mins"},
             "blinkit": {"price": 195, "delivery": 15, "handling": 4, "surge": 0, "eta": "11 mins"},
             "zepto": {"price": 199, "delivery": 25, "handling": 4, "surge": 0, "eta": "10 mins"},
             "instamart": {"price": 190, "delivery": 20, "handling": 4, "surge": 0, "eta": "14 mins"}
@@ -322,22 +301,22 @@ async def compare_items(
         catalog, def_price, def_unit = FOOD_CATALOG, 220, "Regular Portion"
     elif cat == "pharmacy":
         def_s = {
-            "1mg": {"price": 85, "delivery": 29, "handling": 5, "surge": 0, "eta": "45 mins"},
-            "apollo": {"price": 88, "delivery": 25, "handling": 4, "surge": 0, "eta": "30 mins"},
-            "pharmeasy": {"price": 82, "delivery": 35, "handling": 5, "surge": 0, "eta": "60 mins"},
-            "netmeds": {"price": 84, "delivery": 30, "handling": 0, "surge": 0, "eta": "2 hrs"},
-            "truemeds": {"price": 55, "delivery": 25, "handling": 0, "surge": 0, "eta": "3 hrs"},
-            "medplus": {"price": 80, "delivery": 20, "handling": 0, "surge": 0, "eta": "45 mins"}
+            "truemeds": {"price": 45, "delivery": 25, "handling": 0, "surge": 0, "eta": "3 hrs"},
+            "medplus": {"price": 65, "delivery": 20, "handling": 0, "surge": 0, "eta": "45 mins"},
+            "pharmeasy": {"price": 70, "delivery": 35, "handling": 5, "surge": 0, "eta": "60 mins"},
+            "1mg": {"price": 72, "delivery": 29, "handling": 5, "surge": 0, "eta": "45 mins"},
+            "apollo": {"price": 75, "delivery": 25, "handling": 4, "surge": 0, "eta": "30 mins"},
+            "netmeds": {"price": 72, "delivery": 30, "handling": 0, "surge": 0, "eta": "2 hrs"}
         }
-        catalog, def_price, def_unit = PHARMACY_CATALOG, 85, "Standard Strip/Pack"
+        catalog, def_price, def_unit = PHARMACY_CATALOG, 72, "Standard Strip/Pack"
     else:
         def_s = {
+            "jiomart": {"price": 60, "delivery": 0, "handling": 0, "surge": 0, "eta": "30 mins"},
+            "flipkart_minutes": {"price": 62, "delivery": 18, "handling": 2, "surge": 0, "eta": "15 mins"},
+            "bbnow": {"price": 64, "delivery": 15, "handling": 3, "surge": 0, "eta": "18 mins"},
             "blinkit": {"price": 65, "delivery": 15, "handling": 4, "surge": 0, "eta": "11 mins"},
             "zepto": {"price": 68, "delivery": 20, "handling": 4, "surge": 0, "eta": "10 mins"},
             "instamart": {"price": 66, "delivery": 22, "handling": 4, "surge": 0, "eta": "14 mins"},
-            "flipkart_minutes": {"price": 62, "delivery": 18, "handling": 2, "surge": 0, "eta": "15 mins"},
-            "bbnow": {"price": 64, "delivery": 15, "handling": 3, "surge": 0, "eta": "18 mins"},
-            "jiomart": {"price": 60, "delivery": 0, "handling": 0, "surge": 0, "eta": "30 mins"},
             "amazonfresh": {"price": 61, "delivery": 29, "handling": 0, "surge": 0, "eta": "60 mins"}
         }
         catalog, def_price, def_unit = GROCERY_CATALOG, 65, "Standard Pack"
@@ -351,17 +330,9 @@ async def compare_items(
                 all_matches.append(item)
 
     basket_summary = compute_basket_summary(all_matches)
-
-    response_payload = {
-        "source": "live",
-        "category": cat,
-        "query": q,
-        "results": all_matches
-    }
-
+    response_payload = {"source": "live", "category": cat, "query": q, "results": all_matches}
     if basket_summary:
         response_payload["basket_summary"] = basket_summary
-
     return response_payload
 
 @app.get("/api/cabs")
@@ -369,7 +340,7 @@ async def compare_cabs(
     pickup: str = Query(..., description="Pickup location"),
     drop: str = Query(..., description="Drop location"),
     km: float = Query(8.5, description="Estimated distance in km"),
-    vehicle: str = Query("all", description="bike | auto | mini | sedan | suv | all")
+    vehicle: str = Query("all")
 ):
     dist = max(1.5, round(km, 1))
     duration_min = int(dist * 3.2 + 6)
@@ -377,30 +348,30 @@ async def compare_cabs(
         "bike": {
             "label": "Bike Taxi (Fastest in Traffic)",
             "providers": {
-                "rapido": {"base": 20, "per_km": 7.5, "platform": 3, "surge": 0, "eta": "2 mins"},
+                "nammayatra": {"base": 20, "per_km": 7.0, "platform": 0, "surge": 0, "eta": "3 mins"},
                 "uber": {"base": 18, "per_km": 7.2, "platform": 4, "surge": 0, "eta": "3 mins"},
-                "ola": {"base": 19, "per_km": 7.4, "platform": 4, "surge": 0, "eta": "4 mins"},
-                "nammayatra": {"base": 20, "per_km": 7.0, "platform": 0, "surge": 0, "eta": "3 mins"}
+                "rapido": {"base": 20, "per_km": 7.5, "platform": 3, "surge": 0, "eta": "2 mins"},
+                "ola": {"base": 19, "per_km": 7.4, "platform": 4, "surge": 0, "eta": "4 mins"}
             }
         },
         "auto": {
             "label": "Auto Rickshaw (Doorstep Pickup)",
             "providers": {
                 "nammayatra": {"base": 30, "per_km": 15.0, "platform": 0, "surge": 0, "eta": "3 mins"},
-                "uber": {"base": 30, "per_km": 15.5, "platform": 8, "surge": 5, "eta": "3 mins"},
-                "ola": {"base": 30, "per_km": 15.8, "platform": 9, "surge": 5, "eta": "4 mins"},
+                "indrive": {"base": 28, "per_km": 14.5, "platform": 0, "surge": 0, "eta": "5 mins"},
                 "rapido": {"base": 30, "per_km": 15.2, "platform": 5, "surge": 0, "eta": "3 mins"},
-                "indrive": {"base": 28, "per_km": 14.5, "platform": 0, "surge": 0, "eta": "5 mins"}
+                "uber": {"base": 30, "per_km": 15.5, "platform": 8, "surge": 5, "eta": "3 mins"},
+                "ola": {"base": 30, "per_km": 15.8, "platform": 9, "surge": 5, "eta": "4 mins"}
             }
         },
         "mini": {
             "label": "Mini / Hatchback AC Cab",
             "providers": {
-                "nammayatra": {"base": 75, "per_km": 18.0, "platform": 0, "surge": 0, "eta": "5 mins"},
                 "indrive": {"base": 70, "per_km": 17.5, "platform": 0, "surge": 0, "eta": "6 mins"},
+                "nammayatra": {"base": 75, "per_km": 18.0, "platform": 0, "surge": 0, "eta": "5 mins"},
+                "rapido": {"base": 75, "per_km": 18.5, "platform": 8, "surge": 0, "eta": "5 mins"},
                 "uber": {"base": 80, "per_km": 19.5, "platform": 15, "surge": 12, "eta": "4 mins"},
-                "ola": {"base": 80, "per_km": 20.0, "platform": 16, "surge": 15, "eta": "5 mins"},
-                "rapido": {"base": 75, "per_km": 18.5, "platform": 8, "surge": 0, "eta": "5 mins"}
+                "ola": {"base": 80, "per_km": 20.0, "platform": 16, "surge": 15, "eta": "5 mins"}
             }
         },
         "sedan": {
@@ -408,18 +379,9 @@ async def compare_cabs(
             "providers": {
                 "blusmart": {"base": 95, "per_km": 21.0, "platform": 0, "surge": 0, "eta": "7 mins"},
                 "nammayatra": {"base": 90, "per_km": 20.0, "platform": 0, "surge": 0, "eta": "6 mins"},
+                "indrive": {"base": 85, "per_km": 19.5, "platform": 0, "surge": 0, "eta": "6 mins"},
                 "uber": {"base": 95, "per_km": 22.0, "platform": 18, "surge": 18, "eta": "5 mins"},
-                "ola": {"base": 95, "per_km": 22.5, "platform": 18, "surge": 20, "eta": "5 mins"},
-                "indrive": {"base": 85, "per_km": 19.5, "platform": 0, "surge": 0, "eta": "6 mins"}
-            }
-        },
-        "suv": {
-            "label": "XL / 6-Seater SUV (Innova / Ertiga)",
-            "providers": {
-                "nammayatra": {"base": 130, "per_km": 26.0, "platform": 0, "surge": 0, "eta": "8 mins"},
-                "uber": {"base": 140, "per_km": 28.5, "platform": 25, "surge": 25, "eta": "7 mins"},
-                "ola": {"base": 140, "per_km": 29.0, "platform": 25, "surge": 30, "eta": "8 mins"},
-                "blusmart": {"base": 145, "per_km": 27.5, "platform": 0, "surge": 0, "eta": "9 mins"}
+                "ola": {"base": 95, "per_km": 22.5, "platform": 18, "surge": 20, "eta": "5 mins"}
             }
         }
     }
