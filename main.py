@@ -165,6 +165,59 @@ def format_results(catalog, q_clean, default_stores, base_price=75, unit_label="
 def health():
     return {"status": "ok", "app": "CompareQ Multi-Category API", "version": "2.0.0"}
 
+def compute_basket_summary(results):
+    if not results or len(results) <= 1:
+        return None
+
+    total_items = len(results)
+    store_totals = {}
+
+    for item in results:
+        stores = item.get("stores", {})
+        for store_name, store_data in stores.items():
+            if store_name not in store_totals:
+                store_totals[store_name] = {
+                    "items_total": 0,
+                    "items_found": 0,
+                    "delivery": store_data.get("delivery", 0),
+                    "handling": store_data.get("handling", 0),
+                    "surge": store_data.get("surge", 0),
+                    "max_eta": store_data.get("eta", "N/A"),
+                    "basket_total": 0,
+                    "all_items_available": False,
+                }
+
+            price = store_data.get("price")
+            if price is not None and price > 0:
+                store_totals[store_name]["items_total"] += price
+                store_totals[store_name]["items_found"] += 1
+                store_totals[store_name]["delivery"] = max(store_totals[store_name]["delivery"], store_data.get("delivery", 0))
+                store_totals[store_name]["handling"] = max(store_totals[store_name]["handling"], store_data.get("handling", 0))
+                store_totals[store_name]["surge"] = max(store_totals[store_name]["surge"], store_data.get("surge", 0))
+
+    best_store = None
+    lowest_cost = float("inf")
+
+    for store_name, data in store_totals.items():
+        data["all_items_available"] = (data["items_found"] == total_items)
+        data["basket_total"] = data["items_total"] + data["delivery"] + data["handling"] + data["surge"]
+
+        if data["all_items_available"] and data["basket_total"] < lowest_cost:
+            lowest_cost = data["basket_total"]
+            best_store = {
+                "store": store_name,
+                "total": data["basket_total"],
+                "items_total": data["items_total"],
+                "fees_total": data["delivery"] + data["handling"] + data["surge"],
+                "eta": data["max_eta"],
+            }
+
+    return {
+        "total_items_queried": total_items,
+        "stores": store_totals,
+        "best_single_store": best_store
+    }
+
 @app.get("/api/compare")
 async def compare_items(
     q: str = Query(..., description="Search term"),
@@ -172,13 +225,14 @@ async def compare_items(
     lat: float = Query(12.9716),
     lon: float = Query(77.5946)
 ):
-    q_clean = q.strip().lower()
     cat = category.strip().lower()
-    cache_key = f"{cat}_{q_clean}_{lat:.2f}_{lon:.2f}"
-    if cache_key in CACHE:
-        ts, data = CACHE[cache_key]
-        if time.time() - ts < CACHE_TTL:
-            return {"source": "cache", "category": cat, "query": q, "results": data}
+
+    # Split multi-item queries like "milk, eggs"
+    query_tokens = [term.strip().lower() for term in q.split(",") if term.strip()]
+    if not query_tokens:
+        query_tokens = [q.strip().lower()]
+
+    all_matches = []
 
     if cat == "food":
         def_s = {
@@ -188,7 +242,7 @@ async def compare_items(
             "eatclub": {"price": 185, "delivery": 0, "handling": 0, "surge": 0, "eta": "25 mins"},
             "ondc": {"price": 195, "delivery": 20, "handling": 8, "surge": 0, "eta": "34 mins"}
         }
-        res = format_results(FOOD_CATALOG, q_clean, def_s, 220, "Regular Portion")
+        catalog, def_price, def_unit = FOOD_CATALOG, 220, "Regular Portion"
     elif cat == "pharmacy":
         def_s = {
             "1mg": {"price": 85, "delivery": 29, "handling": 5, "surge": 0, "eta": "45 mins"},
@@ -198,7 +252,7 @@ async def compare_items(
             "truemeds": {"price": 55, "delivery": 25, "handling": 0, "surge": 0, "eta": "3 hrs"},
             "medplus": {"price": 80, "delivery": 20, "handling": 0, "surge": 0, "eta": "45 mins"}
         }
-        res = format_results(PHARMACY_CATALOG, q_clean, def_s, 85, "Standard Strip/Pack")
+        catalog, def_price, def_unit = PHARMACY_CATALOG, 85, "Standard Strip/Pack"
     elif cat == "shopping":
         def_s = {
             "amazon": {"price": 1499, "delivery": 0, "handling": 0, "surge": 0, "eta": "Tomorrow"},
@@ -209,7 +263,7 @@ async def compare_items(
             "myntra": {"price": 1520, "delivery": 0, "handling": 20, "surge": 0, "eta": "2 Days"},
             "ajio": {"price": 1490, "delivery": 0, "handling": 29, "surge": 0, "eta": "3 Days"}
         }
-        res = format_results(SHOPPING_CATALOG, q_clean, def_s, 1499, "Verified Retail Unit")
+        catalog, def_price, def_unit = SHOPPING_CATALOG, 1499, "Verified Retail Unit"
     else:
         def_s = {
             "blinkit": {"price": 65, "delivery": 15, "handling": 4, "surge": 0, "eta": "11 mins"},
@@ -220,10 +274,29 @@ async def compare_items(
             "jiomart": {"price": 60, "delivery": 0, "handling": 0, "surge": 0, "eta": "30 mins"},
             "amazonfresh": {"price": 61, "delivery": 29, "handling": 0, "surge": 0, "eta": "60 mins"}
         }
-        res = format_results(GROCERY_CATALOG, q_clean, def_s, 65, "Standard Pack")
+        catalog, def_price, def_unit = GROCERY_CATALOG, 65, "Standard Pack"
 
-    CACHE[cache_key] = (time.time(), res)
-    return {"source": "live", "category": cat, "query": q, "results": res}
+    seen_ids = set()
+    for token in query_tokens:
+        sub_results = format_results(catalog, token, def_s, def_price, def_unit)
+        for item in sub_results:
+            if item["id"] not in seen_ids:
+                seen_ids.add(item["id"])
+                all_matches.append(item)
+
+    basket_summary = compute_basket_summary(all_matches)
+
+    response_payload = {
+        "source": "live",
+        "category": cat,
+        "query": q,
+        "results": all_matches
+    }
+
+    if basket_summary:
+        response_payload["basket_summary"] = basket_summary
+
+    return response_payload
 
 @app.get("/api/cabs")
 async def compare_cabs(
