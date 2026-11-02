@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict, Any
 import uvicorn
 
-# Import the new live scraper engine
 from live_scraper import get_live_comparison
 
 app = FastAPI(
@@ -12,9 +11,7 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# ---------------------------------------------------------
-# CORS Middleware: Allows Netlify frontend and local testing
-# ---------------------------------------------------------
+# Enable CORS for Netlify frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,9 +20,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------
-# Health Check Endpoint
-# ---------------------------------------------------------
 @app.get("/")
 def read_root():
     return {
@@ -35,53 +29,63 @@ def read_root():
     }
 
 # ---------------------------------------------------------
-# NEW: Live Real-Time Provider Comparison Route
+# Primary Comparison Route (Called by compareq.netlify.app)
 # ---------------------------------------------------------
-@app.get("/api/compare/live")
-async def live_search(
-    q: str = Query(..., description="Product query (e.g., tennis ball, milk, bread)"),
-    lat: float = Query(12.9904, description="User latitude (defaults to Bengaluru)"),
-    lon: float = Query(77.6710, description="User longitude (defaults to Bengaluru)")
+@app.get("/api/compare")
+async def compare_items(
+    q: str = Query(..., description="Product query"),
+    category: str = Query("grocery", description="Category"),
+    lat: float = Query(12.9904, description="Latitude"),
+    lon: float = Query(77.6710, description="Longitude")
 ):
     """
-    Queries live catalog endpoints (Blinkit, Zepto, etc.) in parallel
-    using geographic dark-store coordinates.
+    Main endpoint consumed by the frontend.
+    Pulls live catalog data or calibrated fee/item breakdown.
     """
-    result = await get_live_comparison(query=q, lat=lat, lon=lon)
-    return result
+    live_data = await get_live_comparison(query=q, lat=lat, lon=lon)
+    
+    # Format items to match frontend structure
+    formatted_results = []
+    for item in live_data.get("items", []):
+        formatted_results.append({
+            "name": item.get("provider"),
+            "product_name": item.get("product_name"),
+            "pack_size": item.get("pack_size"),
+            "base_price": item.get("price"),
+            "fees": 15 if item.get("provider") != "JioMart" else 0,
+            "total": item.get("price") + (15 if item.get("provider") != "JioMart" else 0),
+            "eta": item.get("eta", "12 mins"),
+            "link": item.get("deep_link", "#"),
+            "image": item.get("image", "")
+        })
 
-# ---------------------------------------------------------
-# Existing Heuristic/Fallback Search Route
-# ---------------------------------------------------------
-@app.get("/api/search")
-def search_items(
-    q: str = Query(..., description="Search query"),
-    category: str = Query("grocery", description="Search category")
-):
-    """
-    Standard benchmark comparison endpoint used as fallback.
-    """
-    providers = [
-        {"name": "JioMart", "base_price": 60, "fees": 0, "eta": "30 mins"},
-        {"name": "Flipkart Minutes", "base_price": 62, "fees": 20, "eta": "15 mins"},
-        {"name": "BB Now", "base_price": 64, "fees": 18, "eta": "18 mins"},
-        {"name": "Blinkit", "base_price": 65, "fees": 19, "eta": "11 mins"},
-        {"name": "Amazon Fresh", "base_price": 61, "fees": 29, "eta": "60 mins"},
-        {"name": "Zepto", "base_price": 68, "fees": 24, "eta": "10 mins"},
-        {"name": "Instamart", "base_price": 66, "fees": 26, "eta": "14 mins"},
-    ]
-
-    for p in providers:
-        p["total"] = p["base_price"] + p["fees"]
-
-    providers.sort(key=lambda x: x["total"])
+    # Sort lowest total price first
+    formatted_results.sort(key=lambda x: x["total"])
 
     return {
         "query": q,
         "category": category,
-        "cheapest": providers[0]["name"],
-        "results": providers
+        "status": live_data.get("status", "success"),
+        "cheapest": formatted_results[0]["name"] if formatted_results else "Blinkit",
+        "results": formatted_results
     }
+
+# Live Direct Route
+@app.get("/api/compare/live")
+async def live_search(
+    q: str = Query(...),
+    lat: float = Query(12.9904),
+    lon: float = Query(77.6710)
+):
+    return await get_live_comparison(query=q, lat=lat, lon=lon)
+
+# Legacy Search Route
+@app.get("/api/search")
+async def search_alias(
+    q: str = Query(...),
+    category: str = Query("grocery")
+):
+    return await compare_items(q=q, category=category)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
