@@ -1,9 +1,9 @@
 import httpx
 import asyncio
+import urllib.parse
 from typing import List, Dict, Any, Optional
 
-# Optional: Paste a free token from scrape.do or scrapingdog.com to route via Indian IPs
-# Leave as "" for direct attempts
+# Active Scrape.do Token
 SCRAPER_API_TOKEN = "8009aa57ce904b2ab4edbaab72aaf5158288fed9359"
 
 HEADERS = {
@@ -13,23 +13,12 @@ HEADERS = {
 }
 
 async def fetch_blinkit(client: httpx.AsyncClient, query: str, lat: float, lon: float) -> Optional[Dict[str, Any]]:
-    target_url = f"https://blinkit.com/v1/search/products?q={query}&start=0&size=3"
-    
-    # If proxy token is provided, route through it to bypass Cloudflare 403
-    if SCRAPER_API_TOKEN:
-        request_url = f"https://api.scrape.do/?token={SCRAPER_API_TOKEN}&geoCode=in&url={target_url}"
-        custom_headers = {}
-    else:
-        request_url = target_url
-        custom_headers = {
-            **HEADERS,
-            "lat": str(lat),
-            "lon": str(lon),
-            "app_client": "consumer_android"
-        }
+    raw_target = f"https://blinkit.com/v1/search/products?q={query}&start=0&size=3"
+    encoded_target = urllib.parse.quote_plus(raw_target)
+    request_url = f"https://api.scrape.do/?token={SCRAPER_API_TOKEN}&geoCode=in&url={encoded_target}"
 
     try:
-        resp = await client.get(request_url, headers=custom_headers, timeout=6.0)
+        resp = await client.get(request_url, timeout=12.0)
         if resp.status_code == 200:
             data = resp.json()
             products = data.get("products") or data.get("items") or []
@@ -50,24 +39,13 @@ async def fetch_blinkit(client: httpx.AsyncClient, query: str, lat: float, lon: 
         print(f"Blinkit error: {e}")
     return None
 
-
 async def fetch_zepto(client: httpx.AsyncClient, query: str, lat: float, lon: float) -> Optional[Dict[str, Any]]:
-    # Corrected domain: Zepto web catalog endpoint
-    target_url = f"https://www.zeptonow.com/api/v1/search?query={query}&page=1"
-    
-    if SCRAPER_API_TOKEN:
-        request_url = f"https://api.scrape.do/?token={SCRAPER_API_TOKEN}&geoCode=in&url={target_url}"
-        custom_headers = {}
-    else:
-        request_url = target_url
-        custom_headers = {
-            **HEADERS,
-            "x-user-latitude": str(lat),
-            "x-user-longitude": str(lon),
-        }
+    raw_target = f"https://www.zeptonow.com/api/v1/search?query={query}&page=1"
+    encoded_target = urllib.parse.quote_plus(raw_target)
+    request_url = f"https://api.scrape.do/?token={SCRAPER_API_TOKEN}&geoCode=in&url={encoded_target}"
 
     try:
-        resp = await client.get(request_url, headers=custom_headers, timeout=6.0)
+        resp = await client.get(request_url, timeout=12.0)
         if resp.status_code == 200:
             data = resp.json()
             items = data.get("layout", []) or data.get("products", [])
@@ -91,7 +69,6 @@ async def fetch_zepto(client: httpx.AsyncClient, query: str, lat: float, lon: fl
         print(f"Zepto error: {e}")
     return None
 
-
 async def get_live_comparison(query: str, lat: float = 12.9904, lon: float = 77.6710) -> Dict[str, Any]:
     async with httpx.AsyncClient(follow_redirects=True) as client:
         results = await asyncio.gather(
@@ -103,7 +80,7 @@ async def get_live_comparison(query: str, lat: float = 12.9904, lon: float = 77.
     valid_results = [r for r in results if isinstance(r, dict) and r is not None]
 
     if not valid_results:
-        return {"status": "fallback", "message": "Anti-bot proxy required for live catalog", "data": []}
+        return {"status": "fallback", "message": "No live items returned from proxy", "data": []}
 
     valid_results.sort(key=lambda x: x["price"])
     return {
