@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 # Optional: Paste a free token from scrape.do or scrapingdog.com to route via Indian IPs
 # Leave as "" for direct attempts
-SCRAPER_API_TOKEN = ""
+SCRAPER_API_TOKEN = "8009aa57ce904b2ab4edbaab72aaf5158288fed9359"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
