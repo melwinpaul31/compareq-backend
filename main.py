@@ -8,7 +8,7 @@ from live_scraper import get_live_comparison
 app = FastAPI(
     title="CompareQ Backend API",
     description="Real-time multi-category price aggregator & fee modeling engine",
-    version="2.1.0"
+    version="2.1.1"
 )
 
 # Enable CORS for Netlify frontend
@@ -22,7 +22,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"app": "CompareQ Backend", "status": "operational", "version": "2.1.0"}
+    return {"app": "CompareQ Backend", "status": "operational", "version": "2.1.1"}
 
 @app.get("/api/compare")
 async def compare_items(
@@ -35,7 +35,6 @@ async def compare_items(
 
     # 1. Category Benchmark Engine (Accurate Bengaluru Market MRPs)
     if any(k in query_clean for k in ["milk", "paal"]):
-        # Nandini / Amul 500ml standard pouch pricing
         base_instamart = 27.0
         base_blinkit = 30.0
         base_zepto = 27.0
@@ -81,7 +80,6 @@ async def compare_items(
         base_amazon = 160.0
         unit_str = "1 Portion"
     else:
-        # Default baseline
         base_instamart = 55.0
         base_blinkit = 58.0
         base_zepto = 57.0
@@ -203,3 +201,28 @@ async def compare_items(
         "best_single_store": {
             "store": best_store_key,
             "total": min_landed,
+            "items_total": best_store["price"],
+            "fees_total": round(best_store["delivery"] + best_store["handling"] + best_store["surge"], 2),
+            "eta": best_store["eta"]
+        },
+        "total_items_queried": 1
+    }
+
+    return {
+        "query": q,
+        "category": category,
+        "status": "success",
+        "results": [product_entry],
+        "basket_summary": basket_summary
+    }
+
+@app.get("/api/compare/live")
+async def live_search(q: str = Query(...), lat: float = Query(12.9904), lon: float = Query(77.6710)):
+    return await compare_items(q=q, lat=lat, lon=lon)
+
+@app.get("/api/search")
+async def search_alias(q: str = Query(...), category: str = Query("grocery")):
+    return await compare_items(q=q, category=category)
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
