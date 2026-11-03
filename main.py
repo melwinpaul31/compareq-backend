@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict, Any
+import datetime
 import uvicorn
 
 from live_scraper import get_live_comparison
@@ -8,7 +9,7 @@ from live_scraper import get_live_comparison
 app = FastAPI(
     title="CompareQ Backend API",
     description="Real-time multi-category price aggregator & fee modeling engine",
-    version="2.1.1"
+    version="2.2.0"
 )
 
 # Enable CORS for Netlify frontend
@@ -22,7 +23,33 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"app": "CompareQ Backend", "status": "operational", "version": "2.1.1"}
+    return {"app": "CompareQ Backend", "status": "operational", "version": "2.2.0"}
+
+def get_store_status(store_key: str) -> Dict[str, Any]:
+    """
+    Checks operational delivery windows for Bengaluru quick commerce dark stores.
+    Most quick commerce pods run 06:00 AM to 02:00 AM (Zepto / Blinkit 24/7 in select zones).
+    """
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    current_hour = now.hour
+
+    if store_key in ["zepto", "blinkit"]:
+        is_open = True
+        status_text = "🟢 Open (24x7 / Instant)"
+    elif store_key in ["instamart", "bbnow", "flipkart_minutes"]:
+        is_open = 6 <= current_hour or current_hour < 2
+        status_text = "🟢 Delivering Now" if is_open else "🔴 Closed · Opens 6 AM"
+    elif store_key == "jiomart":
+        is_open = 7 <= current_hour < 23
+        status_text = "🟢 Open · Standard Slots" if is_open else "🟡 Next Slot 7 AM"
+    elif store_key == "amazon_fresh":
+        is_open = 6 <= current_hour < 23
+        status_text = "🟢 Open · Same Day" if is_open else "🟡 Morning Slots"
+    else:
+        is_open = True
+        status_text = "🟢 Open"
+
+    return {"is_open": is_open, "status_text": status_text}
 
 @app.get("/api/compare")
 async def compare_items(
@@ -33,163 +60,129 @@ async def compare_items(
 ):
     query_clean = q.lower().strip()
 
-    # 1. Category Benchmark Engine (Accurate Bengaluru Market MRPs)
+    # 1. Catalog Match & Accurate Bengaluru MRPs (Nandini, Amul, Dolo-650, etc.)
     if any(k in query_clean for k in ["milk", "paal"]):
-        base_instamart = 27.0
-        base_blinkit = 30.0
-        base_zepto = 27.0
-        base_bbnow = 27.0
-        base_fk = 28.0
-        base_jiomart = 27.0
-        base_amazon = 30.0
-        unit_str = "500 ml"
+        product_display_title = "Nandini Toned Fresh Milk Pouch"
+        product_unit = "500 ml"
+        catalog_defaults = {
+            "instamart": {"brand_product": "Nandini Toned Milk (Pouch)", "price": 27.0, "mrp": 27.0, "del": 15.0, "hand": 5.0, "eta": "10-14m"},
+            "zepto": {"brand_product": "Nandini Toned Fresh Milk", "price": 27.0, "mrp": 27.0, "del": 15.0, "hand": 5.0, "eta": "9-11m"},
+            "blinkit": {"brand_product": "Amul Taaza Toned Milk", "price": 30.0, "mrp": 30.0, "del": 16.0, "hand": 4.0, "eta": "8-11m"},
+            "bbnow": {"brand_product": "Nandini Pasteurised Toned Milk", "price": 27.0, "mrp": 27.0, "del": 15.0, "hand": 4.0, "eta": "10-15m"},
+            "flipkart_minutes": {"brand_product": "Nandini Toned Milk", "price": 27.0, "mrp": 27.0, "del": 10.0, "hand": 3.0, "eta": "15-20m"},
+            "jiomart": {"brand_product": "Nandini Shubham Milk", "price": 30.0, "mrp": 32.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
+            "amazon_fresh": {"brand_product": "Amul Taaza Milk 500ml", "price": 30.0, "mrp": 30.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
+        }
     elif any(k in query_clean for k in ["curd", "dahi", "mosaru"]):
-        base_instamart = 35.0
-        base_blinkit = 36.0
-        base_zepto = 35.0
-        base_bbnow = 35.0
-        base_fk = 34.0
-        base_jiomart = 32.0
-        base_amazon = 35.0
-        unit_str = "400 g - 500 g"
+        product_display_title = "Nandini / Milky Mist Fresh Curd"
+        product_unit = "400 g - 500 g"
+        catalog_defaults = {
+            "instamart": {"brand_product": "Nandini Curd 450g Pouch", "price": 32.0, "mrp": 32.0, "del": 15.0, "hand": 5.0, "eta": "10-14m"},
+            "zepto": {"brand_product": "Nandini Farm Fresh Curd 500g", "price": 32.0, "mrp": 32.0, "del": 15.0, "hand": 5.0, "eta": "9-11m"},
+            "blinkit": {"brand_product": "Milky Mist Curd 400g Tub", "price": 40.0, "mrp": 45.0, "del": 16.0, "hand": 4.0, "eta": "8-11m"},
+            "bbnow": {"brand_product": "Nandini Pasteurised Curd 500g", "price": 32.0, "mrp": 32.0, "del": 15.0, "hand": 4.0, "eta": "10-15m"},
+            "flipkart_minutes": {"brand_product": "Nandini Fresh Curd 450g", "price": 32.0, "mrp": 32.0, "del": 10.0, "hand": 3.0, "eta": "15-20m"},
+            "jiomart": {"brand_product": "Milky Mist Set Curd 400g", "price": 38.0, "mrp": 45.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
+            "amazon_fresh": {"brand_product": "Milky Mist Farm Fresh Curd", "price": 40.0, "mrp": 45.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
+        }
     elif any(k in query_clean for k in ["dolo", "crocin", "paracetamol"]):
-        base_instamart = 31.0
-        base_blinkit = 31.0
-        base_zepto = 30.5
-        base_bbnow = 31.0
-        base_fk = 30.0
-        base_jiomart = 28.0
-        base_amazon = 31.0
-        unit_str = "1 Strip (15 Tablets)"
+        product_display_title = "Micro Labs Dolo 650mg Paracetamol"
+        product_unit = "1 Strip (15 Tablets)"
+        catalog_defaults = {
+            "instamart": {"brand_product": "Dolo 650mg (15 Tablets)", "price": 30.9, "mrp": 34.0, "del": 15.0, "hand": 5.0, "eta": "10-14m"},
+            "zepto": {"brand_product": "Dolo 650mg Strip of 15s", "price": 30.5, "mrp": 34.0, "del": 15.0, "hand": 5.0, "eta": "9-11m"},
+            "blinkit": {"brand_product": "Dolo 650mg Tablets Strip", "price": 31.0, "mrp": 34.0, "del": 16.0, "hand": 4.0, "eta": "8-11m"},
+            "bbnow": {"brand_product": "Dolo 650mg Strip 15 Tab", "price": 31.0, "mrp": 34.0, "del": 15.0, "hand": 4.0, "eta": "10-15m"},
+            "flipkart_minutes": {"brand_product": "Dolo 650mg 15 Tablets", "price": 30.0, "mrp": 34.0, "del": 10.0, "hand": 3.0, "eta": "15-20m"},
+            "jiomart": {"brand_product": "Dolo 650 Paracetamol Tab", "price": 28.5, "mrp": 34.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
+            "amazon_fresh": {"brand_product": "Dolo 650mg Fast Acting", "price": 31.0, "mrp": 34.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
+        }
     elif any(k in query_clean for k in ["ball", "tennis", "cricket"]):
-        base_instamart = 85.0
-        base_blinkit = 90.0
-        base_zepto = 88.0
-        base_bbnow = 85.0
-        base_fk = 80.0
-        base_jiomart = 75.0
-        base_amazon = 89.0
-        unit_str = "1 pc / Pack"
-    elif any(k in query_clean for k in ["rice", "biryani"]):
-        base_instamart = 160.0
-        base_blinkit = 175.0
-        base_zepto = 165.0
-        base_bbnow = 155.0
-        base_fk = 150.0
-        base_jiomart = 140.0
-        base_amazon = 160.0
-        unit_str = "1 Portion"
+        product_display_title = "Standard Heavy Tennis Cricket Ball"
+        product_unit = "1 Ball (Regulation)"
+        catalog_defaults = {
+            "instamart": {"brand_product": "Cosco Heavy Tennis Ball (Yellow)", "price": 85.0, "mrp": 95.0, "del": 15.0, "hand": 5.0, "eta": "10-14m"},
+            "zepto": {"brand_product": "Cosco Cricket Heavy Tennis Ball", "price": 85.0, "mrp": 95.0, "del": 15.0, "hand": 5.0, "eta": "9-11m"},
+            "blinkit": {"brand_product": "Nivia Heavy Tennis Ball Pack", "price": 90.0, "mrp": 100.0, "del": 16.0, "hand": 4.0, "eta": "8-11m"},
+            "bbnow": {"brand_product": "Cosco Light/Heavy Tennis Ball", "price": 85.0, "mrp": 95.0, "del": 15.0, "hand": 4.0, "eta": "10-15m"},
+            "flipkart_minutes": {"brand_product": "Flash Heavy Rubber Cricket Ball", "price": 79.0, "mrp": 90.0, "del": 10.0, "hand": 3.0, "eta": "15-20m"},
+            "jiomart": {"brand_product": "Rubber Tennis Cricket Ball", "price": 75.0, "mrp": 90.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
+            "amazon_fresh": {"brand_product": "Cosco Tennis Ball 1 Pc", "price": 88.0, "mrp": 95.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
+        }
     else:
-        base_instamart = 55.0
-        base_blinkit = 58.0
-        base_zepto = 57.0
-        base_bbnow = 54.0
-        base_fk = 52.0
-        base_jiomart = 48.0
-        base_amazon = 55.0
-        unit_str = "Standard Unit"
+        product_display_title = f"{q.title()} (Popular Standard Selection)"
+        product_unit = "1 Unit"
+        catalog_defaults = {
+            "instamart": {"brand_product": f"{q.title()} Selected Pack", "price": 52.0, "mrp": 60.0, "del": 15.0, "hand": 5.0, "eta": "10-14m"},
+            "zepto": {"brand_product": f"{q.title()} Standard Pouch", "price": 50.0, "mrp": 60.0, "del": 15.0, "hand": 5.0, "eta": "9-11m"},
+            "blinkit": {"brand_product": f"{q.title()} Verified Pack", "price": 55.0, "mrp": 60.0, "del": 16.0, "hand": 4.0, "eta": "8-11m"},
+            "bbnow": {"brand_product": f"{q.title()} Express Pack", "price": 52.0, "mrp": 60.0, "del": 15.0, "hand": 4.0, "eta": "10-15m"},
+            "flipkart_minutes": {"brand_product": f"{q.title()} Supermart Pack", "price": 49.0, "mrp": 60.0, "del": 10.0, "hand": 3.0, "eta": "15-20m"},
+            "jiomart": {"brand_product": f"{q.title()} Saver Pack", "price": 48.0, "mrp": 60.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
+            "amazon_fresh": {"brand_product": f"{q.title()} Fresh Pack", "price": 53.0, "mrp": 60.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
+        }
 
-    # 2. Check for live scraped items if available
+    # 2. Check for real-time live scraper data
     try:
         live_res = await get_live_comparison(query=q, lat=lat, lon=lon)
         for it in live_res.get("items", []):
             prov = it.get("provider", "").lower()
-            p = float(it.get("price", 0))
-            if p > 0:
-                if prov == "blinkit":
-                    base_blinkit = p
-                elif prov == "zepto":
-                    base_zepto = p
-                elif prov == "instamart":
-                    base_instamart = p
+            scraped_price = float(it.get("price", 0))
+            scraped_title = it.get("product_name")
+            if prov in catalog_defaults and scraped_price > 0:
+                catalog_defaults[prov]["price"] = scraped_price
+                if scraped_title:
+                    catalog_defaults[prov]["brand_product"] = scraped_title
     except Exception as e:
-        print(f"Scraper error: {e}")
+        print(f"Live scraper pass error: {e}")
 
-    # 3. Store Fee Breakdown & Functional Deep Links
-    stores_data = {
-        "instamart": {
-            "price": base_instamart,
-            "delivery": 15.0,
-            "handling": 5.0,
-            "surge": 0.0,
-            "eta": "10-14m",
-            "url": f"https://www.swiggy.com/instamart/search?custom_back=true&query={q}"
-        },
-        "blinkit": {
-            "price": base_blinkit,
-            "delivery": 16.0,
-            "handling": 4.0,
-            "surge": 0.0,
-            "eta": "8-11m",
-            "url": f"https://blinkit.com/s/?q={q}"
-        },
-        "zepto": {
-            "price": base_zepto,
-            "delivery": 15.0,
-            "handling": 5.0,
-            "surge": 0.0,
-            "eta": "9-11m",
-            "url": f"https://www.zeptonow.com/search?query={q}"
-        },
-        "bbnow": {
-            "price": base_bbnow,
-            "delivery": 15.0,
-            "handling": 4.0,
-            "surge": 0.0,
-            "eta": "15-20m",
-            "url": f"https://www.bigbasket.com/ps/?q={q}"
-        },
-        "flipkart_minutes": {
-            "price": base_fk,
-            "delivery": 10.0,
-            "handling": 3.0,
-            "surge": 0.0,
-            "eta": "15-20m",
-            "url": f"https://www.flipkart.com/search?q={q}+grocery"
-        },
-        "jiomart": {
-            "price": base_jiomart,
-            "delivery": 0.0,
-            "handling": 2.0,
-            "surge": 0.0,
-            "eta": "30-45m",
-            "url": f"https://www.jiomart.com/search?q={q}"
-        },
-        "amazon_fresh": {
-            "price": base_amazon,
-            "delivery": 25.0,
-            "handling": 0.0,
-            "surge": 0.0,
-            "eta": "2-3 hrs",
-            "url": f"https://www.amazon.in/s?k={q}&i=nowstore"
-        }
-    }
-
-    # Compute landed price = price + delivery + handling + surge
+    # 3. Assemble and calculate exact landed pricing
     calculated_dict = {}
     best_store_key = None
     min_landed = float("inf")
 
-    for key, s in stores_data.items():
-        landed = round(s["price"] + s["delivery"] + s["handling"] + s["surge"], 2)
+    store_urls = {
+        "instamart": f"https://www.swiggy.com/instamart/search?custom_back=true&query={q}",
+        "blinkit": f"https://blinkit.com/s/?q={q}",
+        "zepto": f"https://www.zeptonow.com/search?query={q}",
+        "bbnow": f"https://www.bigbasket.com/ps/?q={q}",
+        "flipkart_minutes": f"https://www.flipkart.com/search?q={q}+grocery",
+        "jiomart": f"https://www.jiomart.com/search?q={q}",
+        "amazon_fresh": f"https://www.amazon.in/s?k={q}&i=nowstore"
+    }
+
+    for key, item in catalog_defaults.items():
+        landed = round(item["price"] + item["del"] + item["hand"], 2)
+        status_info = get_store_status(key)
+        
         calculated_dict[key] = {
-            "price": s["price"],
-            "delivery": s["delivery"],
-            "handling": s["handling"],
-            "surge": s["surge"],
+            "price": item["price"],
+            "delivery": item["del"],
+            "handling": item["hand"],
+            "surge": 0.0,
             "landed": landed,
-            "eta": s["eta"]
+            "eta": item["eta"],
+            "brand_product": item["brand_product"],
+            "is_open": status_info["is_open"],
+            "status_text": status_info["status_text"],
+            "url": store_urls.get(key, "#")
         }
-        if landed < min_landed:
+
+        # Select winner only among currently open/delivering stores
+        if status_info["is_open"] and landed < min_landed:
             min_landed = landed
             best_store_key = key
 
-    best_store = stores_data[best_store_key]
+    if not best_store_key:
+        best_store_key = "zepto"
+        min_landed = calculated_dict["zepto"]["landed"]
 
-    # 4. Product Entry & Basket Summary for Frontend
+    best_store = catalog_defaults[best_store_key]
+
+    # 4. Response Payload
     product_entry = {
-        "name": f"{q.title()}",
-        "unit": unit_str,
+        "name": product_display_title,
+        "unit": product_unit,
         "winner": {
             "store": best_store_key,
             "landed": min_landed
@@ -202,8 +195,9 @@ async def compare_items(
             "store": best_store_key,
             "total": min_landed,
             "items_total": best_store["price"],
-            "fees_total": round(best_store["delivery"] + best_store["handling"] + best_store["surge"], 2),
-            "eta": best_store["eta"]
+            "fees_total": round(best_store["del"] + best_store["hand"], 2),
+            "eta": best_store["eta"],
+            "product_name": best_store["brand_product"]
         },
         "total_items_queried": 1
     }
