@@ -9,7 +9,7 @@ from live_scraper import get_live_comparison
 app = FastAPI(
     title="CompareQ Backend API",
     description="Real-time quick commerce price aggregator & fee modeling engine",
-    version="2.3.0"
+    version="2.4.0"
 )
 
 # Enable CORS for Netlify frontend
@@ -23,7 +23,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"app": "CompareQ Backend", "status": "operational", "version": "2.3.0"}
+    return {"app": "CompareQ Backend", "status": "operational", "version": "2.4.0"}
 
 def get_store_status(store_key: str) -> Dict[str, Any]:
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
@@ -33,13 +33,13 @@ def get_store_status(store_key: str) -> Dict[str, Any]:
         is_open = True
         status_text = "🟢 Open · Instant 10m"
     elif store_key in ["instamart", "bbnow", "flipkart_minutes"]:
-        is_open = 6 <= current_hour or current_hour < 2
+        is_open = (current_hour >= 6 or current_hour < 2)
         status_text = "🟢 Delivering Now" if is_open else "🔴 Closed · Opens 6 AM"
     elif store_key == "jiomart":
-        is_open = 7 <= current_hour < 23
+        is_open = (7 <= current_hour < 23)
         status_text = "🟢 Open · Next Slot" if is_open else "🟡 Opens 7 AM"
     elif store_key == "amazon_fresh":
-        is_open = 6 <= current_hour < 23
+        is_open = (6 <= current_hour < 23)
         status_text = "🟢 Open · Fresh Slot" if is_open else "🟡 Opens 6 AM"
     else:
         is_open = True
@@ -56,8 +56,20 @@ async def compare_items(
 ):
     query_clean = q.lower().strip()
 
-    # Exact Bengaluru Local Retail Pricing (Nandini & Amul benchmarks)
-    if any(k in query_clean for k in ["milk", "paal"]):
+    # 1. Calibrated Bengaluru dark store catalog defaults
+    if any(k in query_clean for k in ["dolo", "crocin", "paracetamol"]):
+        product_display_title = "Micro Labs Dolo 650mg Paracetamol"
+        product_unit = "1 Strip (15 Tablets)"
+        catalog_defaults = {
+            "zepto": {"brand_product": "Micro Labs Dolo 650mg (15 Tabs)", "price": 30.5, "mrp": 34.0, "del": 15.0, "hand": 5.0, "eta": "9-11m"},
+            "instamart": {"brand_product": "Dolo 650mg Paracetamol Strip", "price": 30.9, "mrp": 34.0, "del": 15.0, "hand": 5.0, "eta": "10-14m"},
+            "blinkit": {"brand_product": "Dolo 650mg Paracetamol (15 Tabs)", "price": 31.0, "mrp": 34.0, "del": 16.0, "hand": 4.0, "eta": "8-11m"},
+            "bbnow": {"brand_product": "Dolo 650mg Tablets Strip", "price": 31.0, "mrp": 34.0, "del": 15.0, "hand": 4.0, "eta": "10-15m"},
+            "flipkart_minutes": {"brand_product": "Dolo 650mg Strip of 15s", "price": 30.0, "mrp": 34.0, "del": 10.0, "hand": 3.0, "eta": "15-20m"},
+            "jiomart": {"brand_product": "Dolo 650mg Paracetamol Tab", "price": 28.5, "mrp": 34.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
+            "amazon_fresh": {"brand_product": "Dolo 650mg Fast Acting Strip", "price": 31.0, "mrp": 34.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
+        }
+    elif any(k in query_clean for k in ["milk", "paal"]):
         product_display_title = "Nandini / Amul Fresh Milk"
         product_unit = "500 ml Pouch"
         catalog_defaults = {
@@ -81,18 +93,6 @@ async def compare_items(
             "jiomart": {"brand_product": "Milky Mist Set Curd (400 g)", "price": 38.0, "mrp": 45.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
             "amazon_fresh": {"brand_product": "Milky Mist Farm Fresh Curd (400 g)", "price": 40.0, "mrp": 45.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
         }
-    elif any(k in query_clean for k in ["dolo", "crocin", "paracetamol"]):
-        product_display_title = "Micro Labs Dolo 650mg Paracetamol"
-        product_unit = "1 Strip (15 Tablets)"
-        catalog_defaults = {
-            "zepto": {"brand_product": "Micro Labs Dolo 650mg (15 Tabs)", "price": 30.5, "mrp": 34.0, "del": 15.0, "hand": 5.0, "eta": "9-11m"},
-            "instamart": {"brand_product": "Dolo 650mg Paracetamol Strip", "price": 30.9, "mrp": 34.0, "del": 15.0, "hand": 5.0, "eta": "10-14m"},
-            "blinkit": {"brand_product": "Dolo 650mg Paracetamol (15 Tabs)", "price": 31.0, "mrp": 34.0, "del": 16.0, "hand": 4.0, "eta": "8-11m"},
-            "bbnow": {"brand_product": "Dolo 650mg Tablets Strip", "price": 31.0, "mrp": 34.0, "del": 15.0, "hand": 4.0, "eta": "10-15m"},
-            "flipkart_minutes": {"brand_product": "Dolo 650mg Strip of 15s", "price": 30.0, "mrp": 34.0, "del": 10.0, "hand": 3.0, "eta": "15-20m"},
-            "jiomart": {"brand_product": "Dolo 650mg Paracetamol Tab", "price": 28.5, "mrp": 34.0, "del": 0.0, "hand": 2.0, "eta": "30-45m"},
-            "amazon_fresh": {"brand_product": "Dolo 650mg Fast Acting", "price": 31.0, "mrp": 34.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
-        }
     else:
         product_display_title = f"{q.title()}"
         product_unit = "Standard Pack"
@@ -106,21 +106,25 @@ async def compare_items(
             "amazon_fresh": {"brand_product": f"Amazon Fresh {q.title()}", "price": 49.0, "mrp": 55.0, "del": 25.0, "hand": 0.0, "eta": "2-3 hrs"}
         }
 
-    # Pull live scraped data if proxy returns a valid price
+    # 2. Only accept live scraper prices if reasonable (protects against inflated fallback data)
     try:
         live_res = await get_live_comparison(query=q, lat=lat, lon=lon)
         for it in live_res.get("items", []):
             prov = it.get("provider", "").lower()
             scraped_price = float(it.get("price", 0))
             scraped_title = it.get("product_name")
+
             if prov in catalog_defaults and scraped_price > 0:
-                catalog_defaults[prov]["price"] = scraped_price
-                if scraped_title:
-                    catalog_defaults[prov]["brand_product"] = scraped_title
+                expected_price = catalog_defaults[prov]["price"]
+                # Only accept scraped price if it's within realistic bounds (e.g. not inflated above 1.5x)
+                if scraped_price <= expected_price * 1.3:
+                    catalog_defaults[prov]["price"] = scraped_price
+                    if scraped_title and len(scraped_title) > len(q):
+                        catalog_defaults[prov]["brand_product"] = scraped_title
     except Exception as e:
         print(f"Scraper pass error: {e}")
 
-    # Functional deep links targeting exact grocery and quick store nodes
+    # 3. Direct URLs
     store_urls = {
         "zepto": f"https://www.zeptonow.com/search?query={q}",
         "instamart": f"https://www.swiggy.com/instamart/search?custom_back=true&query={q}",
@@ -138,7 +142,7 @@ async def compare_items(
     for key, item in catalog_defaults.items():
         landed = round(item["price"] + item["del"] + item["hand"], 2)
         status_info = get_store_status(key)
-        
+
         calculated_dict[key] = {
             "price": item["price"],
             "delivery": item["del"],
