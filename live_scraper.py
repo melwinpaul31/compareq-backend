@@ -18,7 +18,6 @@ async def fetch_live_product(store_key: str, query: str, client: httpx.AsyncClie
     """Directly queries the platform's public search page and extracts the real price & product name."""
     encoded_q = urllib.parse.quote_plus(query)
     
-    # Define platform search URLs
     urls = {
         "zepto": f"https://www.zeptonow.com/search?query={encoded_q}",
         "blinkit": f"https://blinkit.com/s/?q={encoded_q}",
@@ -40,19 +39,14 @@ async def fetch_live_product(store_key: str, query: str, client: httpx.AsyncClie
         
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
-            
-            # Extract page title or product card text as a baseline demonstration of live fetching
-            # (In production, this parses the specific price DOM nodes of each aggregator)
             page_text = soup.get_text()
             
-            # Simple regex search for currency patterns near the query term
             prices = re.findall(r'₹\s*([0-9,]+(?:\.[0-9]{1,2})?)', page_text)
             if prices:
-                # Clean and convert the first discovered valid price
                 clean_prices = []
                 for p in prices[:5]:
                     val = float(p.replace(',', ''))
-                    if 5 <= val <= 500000:  # Valid price range for groceries up to electronics
+                    if 5 <= val <= 500000:
                         clean_prices.append(val)
                 
                 if clean_prices:
